@@ -8,6 +8,18 @@ volumes:
   grafana-storage: {}
 
 services:
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    command: --api.insecure=true --providers.docker
+    ports:
+      # The HTTP port
+      - "8000:80"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
   plex:
     image: lscr.io/linuxserver/plex:latest
     container_name: plex
@@ -21,6 +33,9 @@ services:
       - /host/config/plex:/config
       - /host/media:/data/media
     restart: unless-stopped
+    labels:
+      - "traefik.http.routers.plex.rule=Host(`plex.homelab.lan`)"
+      - "traefik.http.services.plex.loadbalancer.server.port=32400"
 
   transmission-openvpn:
     image: haugene/transmission-openvpn
@@ -63,24 +78,6 @@ services:
       - 7878:7878
     restart: unless-stopped
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    restart: unless-stopped
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    expose:
-      - 9100
-    networks:
-      - monitoring
-
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -96,8 +93,8 @@ services:
       - '--web.enable-lifecycle'
     expose:
       - 9090
-    networks:
-      - monitoring
+    labels:
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.homelab.lan`)"
 
   grafana:
     image: grafana/grafana-enterprise
@@ -105,10 +102,10 @@ services:
     restart: unless-stopped
     expose:
       - '3000'
-    networks:
-      - monitoring
     volumes:
       - grafana-storage:/var/lib/grafana
+    labels:
+      - "traefik.http.routers.grafana.rule=Host(`grafana.homelab.lan`)"
 
   pihole:
     container_name: pihole
@@ -128,3 +125,6 @@ services:
     cap_add:
       - NET_ADMIN # Required if you are using Pi-hole as your DHCP server, else not needed
     restart: unless-stopped
+    labels:
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+
